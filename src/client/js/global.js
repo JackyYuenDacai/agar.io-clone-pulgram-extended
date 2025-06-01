@@ -1,4 +1,4 @@
-window.global = {
+module.exports = {
     // Keys and other mathematical constants
     KEY_ESC: 27,
     KEY_ENTER: 13,
