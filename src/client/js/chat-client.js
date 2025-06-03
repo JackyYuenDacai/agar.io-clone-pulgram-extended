@@ -1,5 +1,6 @@
 (function() {
-    class ChatClient {
+    // Define ChatClient in browser global scope
+    window.ChatClient = class ChatClient {
         constructor(params) {
             this.canvas = window.global.canvas;
             this.socket = window.global.socket;

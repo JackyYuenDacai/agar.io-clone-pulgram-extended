@@ -1,4 +1,4 @@
-window.addEventListener('load', function() {
+window.addEventListener('load', () => {
     // Pre-initialize game state
     window.GameState = {
         width: 5000,

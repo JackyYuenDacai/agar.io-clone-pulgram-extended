@@ -81,13 +81,28 @@
         graph.closePath();
         graph.fill();
         graph.stroke();
-    }
-
+    }    
     const drawCells = (cells, playerConfig, toggleMassState, borders, graph) => {
         if (!Array.isArray(cells)) {
             console.warn('Invalid cells:', cells);
             return;
         }
+        
+        // Make sure playerConfig is defined
+        playerConfig = playerConfig || {
+            border: 6,
+            textColor: '#FFFFFF',
+            textBorder: '#000000',
+            textBorderSize: 3
+        };
+        
+        // Make sure borders are defined
+        borders = borders || {
+            left: 0,
+            right: window.config?.gameWidth || 5000,
+            top: 0,
+            bottom: window.config?.gameHeight || 5000
+        };
         
         for (let cell of cells) {
             if (!cell) {
@@ -98,7 +113,7 @@
             // Ensure cell has all required properties
             const x = Number(cell.x);
             const y = Number(cell.y);
-            const radius = Number(cell.radius);
+            const radius = Number(cell.radius || (cell.mass ? window.util.massToRadius(cell.mass) : 10));
             
             if (isNaN(x) || isNaN(y) || isNaN(radius) || radius <= 0) {
                 console.warn('Cell has invalid coordinates or radius:', cell);
@@ -190,7 +205,12 @@
         graph.fillText(message, screen.width / 2, screen.height / 2);
     }
 
-    // Export to window object
+    // Export to window object    
+    const clearScreen = (graph, screen) => {
+        graph.fillStyle = window.global.backgroundColor;
+        graph.fillRect(0, 0, screen.width, screen.height);
+    };
+
     window.render = {
         drawRoundObject,
         drawFood,
@@ -199,6 +219,7 @@
         drawCells,
         drawErrorMessage,
         drawGrid,
-        drawBorder
+        drawBorder,
+        clearScreen
     };
 })();

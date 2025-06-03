@@ -1,15 +1,14 @@
-var render = window.render;
-var ChatClient = window.ChatClient;
-var Canvas = window.Canvas;
-var global = window.global;
+// Get dependencies from window object
+const render = window.render;
+const ChatClient = window.ChatClient;
+const Canvas = window.Canvas;
+const global = window.global;
 
-var playerNameInput = document.getElementById('playerNameInput');
-var socket;
+const playerNameInput = document.getElementById('playerNameInput');
+let socket;
 
-var debug = function (args) {
-    if (console && console.log) {
-        console.log(args);
-    }
+const debug = (args) => {
+    console?.log?.(args);
 };
 
 if (/Android|webOS|iPhone|iPad|iPod|BlackBerry/i.test(navigator.userAgent)) {
@@ -275,7 +274,7 @@ $("#split").click(function () {
 
 function handleDisconnect() {
     if (!global.kicked) {
-        render.drawErrorMessage('Disconnected from host!', graph, global.screen);
+        global.disconnected = true;
         // Try to re-elect a new host
         if (global.networkCoordinator) {
             global.networkCoordinator.startHostElection();
@@ -288,37 +287,104 @@ function setupGameNetwork() {
     if (!global.networkCoordinator) return;
 
     // Update game state when received from host
-    const coordinator = global.networkCoordinator;
-      coordinator.onGameStateUpdate = (state) => {
+    const coordinator = global.networkCoordinator;        coordinator.onGameStateUpdate = (state) => {
         if (coordinator.isHost) return; // Host maintains own state
         
         console.log('Received game state update:', state);
         
         // Update game state from host
-        if (state.playerData) {
-            window.player = state.playerData;
-            if (!window.player.cells) {
-                window.player.cells = [{
-                    x: window.player.x,
-                    y: window.player.y,
-                    mass: window.config.defaultPlayerMass,
-                    radius: window.util.massToRadius(window.config.defaultPlayerMass),
-                    hue: window.player.hue,
-                    name: window.player.name
-                }];
+        try {
+            // Update player data
+            if (state.players && state.players[window.pulgram.getUserId()]) {
+                const playerData = state.players[window.pulgram.getUserId()];
+                window.player = {
+                    id: playerData.id,
+                    x: playerData.x,
+                    y: playerData.y,
+                    hue: playerData.hue || Math.round(Math.random() * 360),
+                    name: playerData.name,
+                    cells: Array.isArray(playerData.cells) ? playerData.cells.map(cell => ({
+                        x: cell.x,
+                        y: cell.y,
+                        mass: cell.mass || window.config.defaultPlayerMass,
+                        radius: cell.radius || window.util.massToRadius(cell.mass || window.config.defaultPlayerMass),
+                        hue: cell.hue || playerData.hue,
+                        name: playerData.name
+                    })) : [{
+                        x: playerData.x,
+                        y: playerData.y,
+                        mass: window.config.defaultPlayerMass,
+                        radius: window.util.massToRadius(window.config.defaultPlayerMass),
+                        hue: playerData.hue,
+                        name: playerData.name
+                    }]
+                };
             }
+            
+            // Update game elements with proper properties
+            window.foods = Array.isArray(state.food) ? state.food.map(food => ({
+                x: food.x,
+                y: food.y,
+                radius: food.radius || window.util.massToRadius(food.mass || window.config.foodMass),
+                mass: food.mass || window.config.foodMass,
+                hue: food.hue || Math.round(Math.random() * 360)
+            })) : [];
+            
+            window.viruses = Array.isArray(state.viruses) ? state.viruses.map(virus => ({
+                x: virus.x,
+                y: virus.y,
+                mass: virus.mass || window.config.virus.defaultMass.from,
+                radius: virus.radius || window.util.massToRadius(virus.mass || window.config.virus.defaultMass.from),
+                fill: virus.fill || window.config.virus.fill,
+                stroke: virus.stroke || window.config.virus.stroke,
+                strokeWidth: virus.strokeWidth || window.config.virus.strokeWidth
+            })) : [];
+            
+            window.fireFood = Array.isArray(state.massFood) ? state.massFood.map(mass => ({
+                x: mass.x,
+                y: mass.y,
+                mass: mass.mass || window.config.fireFood.defaultMass,
+                radius: mass.radius || window.util.massToRadius(mass.mass || window.config.fireFood.defaultMass),
+                hue: mass.hue || Math.round(Math.random() * 360)
+            })) : [];
+            
+            // Update users (other players)
+            if (state.players) {
+                window.users = Object.entries(state.players)
+                    .filter(([id]) => id !== window.pulgram.getUserId())
+                    .map(([, user]) => ({
+                        id: user.id,
+                        x: user.x,
+                        y: user.y,
+                        cells: Array.isArray(user.cells) ? user.cells.map(cell => ({
+                            x: cell.x,
+                            y: cell.y,
+                            mass: cell.mass,
+                            radius: cell.radius || window.util.massToRadius(cell.mass),
+                            hue: cell.hue,
+                            name: user.name
+                        })) : [{
+                            x: user.x,
+                            y: user.y,
+                            mass: user.mass || window.config.defaultPlayerMass,
+                            radius: window.util.massToRadius(user.mass || window.config.defaultPlayerMass),
+                            hue: user.hue || Math.round(Math.random() * 360),
+                            name: user.name
+                        }],
+                        hue: user.hue || Math.round(Math.random() * 360),
+                        name: user.name
+                    }));
+            }            
+            window.leaderboard = Array.isArray(state.leaderboard) ? state.leaderboard : [];
+        } catch (err) {
+            console.error('Error processing game state update:', err);
         }
-        window.foods = Array.isArray(state.foods) ? state.foods : [];
-        window.viruses = Array.isArray(state.viruses) ? state.viruses : [];
-        window.users = Array.isArray(state.users) ? state.users : [];
-        window.fireFood = Array.isArray(state.massList) ? state.massList : [];
-        window.leaderboard = Array.isArray(state.leaderboard) ? state.leaderboard : [];
 
         // Update global game size
-        if (state.gameSize) {
-            global.gameWidth = state.gameSize.width;
-            global.gameHeight = state.gameSize.height;
-        }
+        global.game = {
+            width: state.gameWidth || window.config.gameWidth,
+            height: state.gameHeight || window.config.gameHeight
+        };
         
         global.gameStart = true;
     };
@@ -383,101 +449,91 @@ function animloop() {
 }
 
 function gameLoop() {
-    if (!global.gameStart) return;
-
-    // Clear the canvas
-    graph.fillStyle = global.backgroundColor || '#F2FBFF';
-    graph.fillRect(0, 0, global.screen.width, global.screen.height);
-
-    try {
-        // Update game size from config if not set
-        if (!global.gameWidth) global.gameWidth = window.config.gameWidth;
-        if (!global.gameHeight) global.gameHeight = window.config.gameHeight;
-
-        const borders = {
-            top: 0,
-            left: 0,
-            right: global.gameWidth,
-            bottom: global.gameHeight
-        };
-
-        // Draw the grid first
-        if (global.player) {
-            render.drawGrid(global, global.player, global.screen, graph);
-        }
-
-        // Draw border if enabled
-        if (window.showBorders) {
-            render.drawBorder(borders, graph);
-        }
-
-        // Draw foods
-        if (Array.isArray(window.foods)) {
-            window.foods.forEach(food => {
-                if (!food) return;
-                const position = getPosition(food, global.player, global.screen);
-                render.drawFood(position, food, graph);
-            });
-        }
-
-        // Draw viruses
-        if (Array.isArray(window.viruses)) {
-            window.viruses.forEach(virus => {
-                if (!virus) return;
-                const position = getPosition(virus, global.player, global.screen);
-                render.drawVirus(position, virus, graph);
-            });
-        }
-
-        // Draw fire food
-        if (Array.isArray(window.fireFood)) {
-            window.fireFood.forEach(massFood => {
-                if (!massFood) return;
-                const position = getPosition(massFood, global.player, global.screen);
-                render.drawFireFood(position, massFood, playerConfig, graph);
-            });
-        }
-
-        // Draw current player
-        if (global.player && global.player.cells) {
-            const playerCells = global.player.cells.map(cell => {
-                const position = getPosition(cell, global.player, global.screen);
-                return {
-                    ...cell,
-                    x: position.x,
-                    y: position.y,
-                    hue: global.player.hue,
-                    name: global.player.name
-                };
-            });
-            render.drawCells(playerCells, playerConfig, window.toggleMassState, borders, graph);
-        }
-
-        // Draw other players
-        if (Array.isArray(window.users)) {
-            window.users.forEach(user => {
-                if (!user || !user.cells) return;
-                const userCells = user.cells.map(cell => {
-                    const position = getPosition(cell, global.player, global.screen);
-                    return {
-                        ...cell,
-                        x: position.x,
-                        y: position.y,
-                        hue: user.hue,
-                        name: user.name
-                    };
-                });
-                render.drawCells(userCells, playerConfig, window.toggleMassState, borders, graph);
-            });
-        }
-
-    } catch (err) {
-        console.error('Error in game loop:', err);
+    // Debug information to help diagnose issues (limit to once per second to avoid console spam)
+    if (!window.lastDebugTime || Date.now() - window.lastDebugTime > 1000) {
+        console.log('Game Loop Iteration', {
+            disconnected: global.disconnected,
+            hasPlayer: !!window.player,
+            playerCells: window.player?.cells?.length || 0,
+            foodCount: window.foods?.length || 0,
+            virusCount: window.viruses?.length || 0,
+            userCount: window.users?.length || 0,
+            screen: global.screen,
+            game: global.game
+        });
+        window.lastDebugTime = Date.now();
     }
-
-    // Continue animation
-    window.animLoopHandle = window.requestAnimFrame(gameLoop);
+    
+    // Ensure global screen dimensions are set correctly
+    if (!global.screen.width || !global.screen.height) {
+        global.screen = {
+            width: window.innerWidth,
+            height: window.innerHeight
+        };
+    }
+    
+    // Ensure global game dimensions are set correctly
+    if (!global.game.width || !global.game.height) {
+        global.game = {
+            width: window.config.gameWidth || 5000,
+            height: window.config.gameHeight || 5000
+        };
+    }
+    
+    if (global.disconnected) {
+        render.drawErrorMessage('Disconnected from host!', graph, global.screen);
+    } else if (window.player) {
+        // Clear the screen
+        render.clearScreen(graph, global.screen);
+        
+        // Draw game grid
+        render.drawGrid(global, window.player, global.screen, graph);
+        
+        // Draw the border if enabled
+        if (global.borderDraw) {
+            render.drawBorder({
+                left: 0,
+                right: global.game.width,
+                top: 0,
+                bottom: global.game.height
+            }, graph);
+        }
+          // Draw game elements
+        const foodConfig = window.config.food;
+        const virusConfig = window.config.virus;
+        const fireFoodConfig = window.config.fireFood;
+        const playerConfig = window.config.player;
+        const userConfig = window.config.users;        // Define borders for drawing
+        const borders = {
+            left: 0,
+            right: global.game.width,
+            top: 0,
+            bottom: global.game.height
+        };
+        
+        // Draw each game element type
+        if (window.foods && Array.isArray(window.foods)) {
+            render.drawCells(window.foods.map(f => ({ ...f, type: 'food' })), foodConfig, global.toggleMassState, borders, graph);
+        }
+        if (window.viruses && Array.isArray(window.viruses)) {
+            render.drawCells(window.viruses.map(v => ({ ...v, type: 'virus' })), virusConfig, global.toggleMassState, borders, graph);
+        }
+        if (window.fireFood && Array.isArray(window.fireFood)) {
+            render.drawCells(window.fireFood.map(f => ({ ...f, type: 'fireFood' })), fireFoodConfig, global.toggleMassState, borders, graph);
+        }
+        if (window.users && Array.isArray(window.users)) {
+            render.drawCells(window.users.map(u => ({ ...u, type: 'user' })), userConfig, global.toggleMassState, borders, graph);
+        }
+        if (window.player && window.player.cells && Array.isArray(window.player.cells)) {
+            render.drawCells(window.player.cells.map(c => ({ ...c, type: 'player' })), playerConfig, global.toggleMassState, borders, graph);
+        }    }
+    
+    // Use the animloop function instead of directly calling requestAnimationFrame
+    window.animLoopHandle = window.requestAnimationFrame(gameLoop);
 }
+
+// Start animation loop
+animloop();
 
 window.addEventListener('resize', resize);
 
@@ -578,3 +634,10 @@ if (global.mobile) {
     mobileGamepad.addEventListener('touchend', handleTouchEnd);
     mobileGamepad.addEventListener('touchcancel', handleTouchEnd);
 }
+
+const borders = {
+    left: 0,
+    right: window.config.gameWidth,
+    top: 0,
+    bottom: window.config.gameHeight
+};

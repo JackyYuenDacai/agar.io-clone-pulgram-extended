@@ -1,6 +1,7 @@
 // Host game logic for P2P gameplay
 (function() {
-    class HostGame {
+    // Define HostGame in browser global scope
+    window.HostGame = class HostGame {
         constructor() {
             this.lastStateUpdate = 0;
             this.STATE_UPDATE_INTERVAL = 100; // 10 updates per second
@@ -227,10 +228,46 @@
                 name: p.name,
                 mass: p.cells.reduce((sum, cell) => sum + cell.mass, 0)
             }));
-        }
+        }    getGameState() {
+            // Convert players Map to object for serialization
+            const serializedPlayers = {};
+            
+            // Check if this.gameState.players is defined and is a Map
+            if (this.gameState && this.gameState.players && this.gameState.players instanceof Map) {
+                this.gameState.players.forEach((player, id) => {
+                    // Make sure the player object has all required properties
+                    serializedPlayers[id] = {
+                        id: player.id || id,
+                        x: player.x || 0,
+                        y: player.y || 0,
+                        hue: player.hue || 0,
+                        name: player.name || "Unknown",
+                        mass: player.mass || window.config.defaultPlayerMass,
+                        cells: player.cells || [{
+                            x: player.x || 0,
+                            y: player.y || 0,
+                            mass: player.mass || window.config.defaultPlayerMass,
+                            radius: window.util.massToRadius(player.mass || window.config.defaultPlayerMass),
+                            hue: player.hue || 0,
+                            name: player.name || "Unknown"
+                        }],
+                        lastHeartbeat: player.lastHeartbeat || Date.now()
+                    };
+                });
+            }
 
-        getGameState() {
-            return this.gameState;
+            // Make a deep copy of the game state to avoid modifying the original
+            const gameStateCopy = {
+                food: [...(this.gameState.food || [])],
+                viruses: [...(this.gameState.viruses || [])],
+                massFood: [...(this.gameState.massFood || [])],
+                leaderboard: [...(this.gameState.leaderboard || [])],
+                gameWidth: this.gameState.gameWidth,
+                gameHeight: this.gameState.gameHeight,
+                players: serializedPlayers
+            };
+
+            return gameStateCopy;
         }
 
         startGame() {
@@ -263,42 +300,31 @@
             
             // Continue game loop using requestAnimationFrame for smoother animation
             this.gameLoopId = requestAnimationFrame(() => this.gameLoop());
-        }
-
+        }        
         broadcastGameState() {
-            const state = {
-                players: new Map(),
-                food: this.gameState.food,
-                viruses: this.gameState.viruses,
-                massFood: this.gameState.massFood,
-                leaderboard: this.gameState.leaderboard
+            const serializedGameState = this.getGameState();
+
+            // Convert the game state to a format that can be sent over the network
+            const stateToSend = {
+                messageType: 'GAME_STATE',
+                data: {
+                    players: serializedGameState.players,
+                    food: serializedGameState.food,
+                    viruses: serializedGameState.viruses,
+                    massFood: serializedGameState.massFood,
+                    leaderboard: serializedGameState.leaderboard,
+                    gameWidth: this.gameState.gameWidth,
+                    gameHeight: this.gameState.gameHeight
+                },
+                timestamp: Date.now()
             };
 
-            // Add host player state
-            if (window.player) {
-                state.players.set(window.pulgram.getUserId(), {
-                    id: window.pulgram.getUserId(),
-                    x: window.player.x,
-                    y: window.player.y,
-                    cells: window.player.cells,
-                    mass: window.player.mass,
-                    hue: window.player.hue,
-                    name: window.player.name
-                });
+            // Send the game state
+            if (window.pulgram) {
+                window.pulgram.sendMessage(stateToSend);
             }
-
-            // Add other players
-            Array.from(this.gameState.players.values()).forEach(player => {
-                if (player.id !== window.pulgram.getUserId()) {
-                    state.players.set(player.id, player);
-                }
-            });
-
-            // Broadcast state to all peers
-            window.pulgram.broadcast('gameState', state);
         }
     }
 
-    // Export to window object
-    window.HostGame = HostGame;
+
 })();

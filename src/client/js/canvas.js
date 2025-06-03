@@ -1,12 +1,12 @@
 (function() {
-    class Canvas {
+    // Define Canvas in browser global scope
+    window.Canvas = class Canvas {
         constructor(params) {
             this.directionLock = false;
             this.target = window.global.target;
             this.reenviar = true;
             this.socket = window.global.socket;
             this.directions = [];
-            var self = this;
 
             this.cv = document.getElementById('cvs');
             this.cv.style.position = 'absolute';
@@ -15,22 +15,19 @@
             this.cv.style.top = '0';
             this.cv.style.bottom = '0';
             this.cv.width = window.innerWidth;
-            this.cv.height = window.innerHeight;
-            
-            this.cv.addEventListener('mousemove', function(e) { self.gameInput(e); }, false);
-            this.cv.addEventListener('mouseout', function(e) { self.outOfBounds(e); }, false);
-            this.cv.addEventListener('keypress', function(e) { self.keyInput(e); }, false);
-            this.cv.addEventListener('keyup', function(e) { 
-                self.reenviar = true;
-                self.directionUp(e); 
+            this.cv.height = window.innerHeight;            this.cv.addEventListener('mousemove', (e) => this.gameInput(e), false);
+            this.cv.addEventListener('mouseout', (e) => this.outOfBounds(e), false);
+            this.cv.addEventListener('keypress', (e) => this.keyInput(e), false);
+            this.cv.addEventListener('keyup', (e) => { 
+                this.reenviar = true;
+                this.directionUp(e); 
             }, false);
-            this.cv.addEventListener('keydown', function(e) { self.directionDown(e); }, false);
-            this.cv.addEventListener('touchstart', function(e) { self.touchInput(e); }, false);
-            this.cv.addEventListener('touchmove', function(e) { self.touchInput(e); }, false);
-            
-            window.onresize = function() {
-                self.cv.width = window.innerWidth;
-                self.cv.height = window.innerHeight;
+            this.cv.addEventListener('keydown', (e) => this.directionDown(e), false);
+            this.cv.addEventListener('touchstart', (e) => this.touchInput(e), false);
+            this.cv.addEventListener('touchmove', (e) => this.touchInput(e), false);
+              window.onresize = () => {
+                this.cv.width = window.innerWidth;
+                this.cv.height = window.innerHeight;
             };
 
             this.width = this.cv.width;

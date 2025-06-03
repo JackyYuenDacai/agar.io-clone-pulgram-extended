@@ -15,10 +15,9 @@ window.global = {
     screen: {
         width: window.innerWidth,
         height: window.innerHeight
-    },
-    game: {
-        width: 0,
-        height: 0
+    },    game: {
+        width: window.config?.gameWidth || 5000,
+        height: window.config?.gameHeight || 5000
     },
     gameStart: false,
     disconnected: false,
