@@ -1,12 +1,10 @@
 <!doctype html>
 <html lang="en">
-<head>    <!-- Meta Properties -->
+<head>
+    <!-- Meta Properties -->
     <meta charset="UTF-8">
     <title>Open Agar</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <!-- CSS -->
     <link rel="stylesheet" href="css/main.css" />
     <!-- Audio -->
@@ -19,12 +17,10 @@
         <div class="chatbox" id="chatbox">
             <ul id="chatList" class="chat-list"></ul>
             <input id="chatInput" type="text" class="chat-input" placeholder="Chat here..." maxlength="35" />
-        </div>        <div id="mobile">
-            <div class="joystick-base">
-                <div class="joystick-thumb"></div>
-            </div>
-            <input type="image" id="split" class="split" src="img/split.png" alt="splitBtn">
-            <input type="image" id="feed" class="feed" src="img/feed.png" alt="feedBtn">
+        </div>
+        <div id="mobile">
+           <input type="image" id="split" class="split" src="img/split.png" alt="splitBtn">
+           <input type="image" id="feed" class="feed" src="img/feed.png" alt="feedBtn">
         </div>
         <canvas tabindex="1" id="cvs"></canvas>
     </div>
@@ -60,19 +56,9 @@
                 </ul>
             </div>
         </div>
-    </div>    <!-- JS -->
+    </div>
+    <!-- JS -->
     <script src="//code.jquery.com/jquery-2.2.0.min.js"></script>
-    <script src="https://pulgram.com/js/pulgram-bridge.js"></script>
-    <script src="js/config.js"></script>
-    <script src="js/utils.js"></script>
-    <script src="js/global.js"></script>
-    <script src="js/render.js"></script>
-    <script src="js/canvas.js"></script>
-    <script src="js/chat-client.js"></script>
-    <script src="js/network/game-state.js"></script>
-    <script src="js/network/coordinator.js"></script>
-    <script src="js/network/host-game.js"></script>
-    <script src="js/network/init.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

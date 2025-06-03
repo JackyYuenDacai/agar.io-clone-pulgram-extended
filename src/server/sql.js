@@ -1,7 +1,7 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
-const config = require('../js/config');
+const config = require('../../config');
 
 const sqlInfo = config.sqlinfo;
 const dbPath = path.join(__dirname, 'db', sqlInfo.fileName);

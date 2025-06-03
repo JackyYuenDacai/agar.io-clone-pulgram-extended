@@ -261,94 +261,16 @@ div {
     opacity: 0;
 }
 
+@media only screen  and (min-width : 1224px) {
 #mobile {
-    position: fixed;
-    bottom: 50px;
-    left: 50px;
-    z-index: 100;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    width: 100px;
-    height: 100px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    touch-action: none;
-    transition: transform 0.1s ease-out;
-    cursor: move;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
+display: none;
+	}
 }
 
-#mobile::before {
-    content: '';
-    position: absolute;
-    width: 20px;
-    height: 20px;
-    background: rgba(255, 255, 255, 0.6);
-    border-radius: 50%;
-}
-
-#mobile .feed, #mobile .split {
-    position: fixed;
-    width: 60px;
-    height: 60px;
-    padding: 15px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.2);
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    transition: all 0.2s ease;
-}
-
-#mobile .feed:active, #mobile .split:active {
-    transform: scale(0.9);
-    background: rgba(255, 255, 255, 0.4);
-}
-
-#mobile .feed {
-    right: 50px;
-    bottom: 50px;
-}
-
-#mobile .split {
-    right: 120px;
-    bottom: 50px;
-}
-
-#mobile .joystick-base {
-    position: relative;
-    width: 100px;
-    height: 100px;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 50%;
-    border: 2px solid rgba(255, 255, 255, 0.3);
-}
-
-#mobile .joystick-thumb {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 40px;
-    height: 40px;
-    margin: -20px 0 0 -20px;
-    background: rgba(255, 255, 255, 0.5);
-    border-radius: 50%;
-    pointer-events: none;
-    transition: transform 0.1s ease-out;
-}
-
-@media only screen and (min-width: 1224px) {
-    #mobile {
-        display: none;
-    }
-}
-
-@media only screen and (max-width: 1224px) {
-    #chatbox {
-        display: none;
-    }
+@media only screen  and (max-width : 1224px) {
+#chatbox {
+display: none;
+        }
 }
 
 input [type="image"]:focus{

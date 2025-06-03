@@ -1,7 +1,8 @@
-var render = window.render;
-var ChatClient = window.ChatClient;
-var Canvas = window.Canvas;
-var global = window.global;
+var io = require('socket.io-client');
+var render = require('./render');
+var ChatClient = require('./chat-client');
+var Canvas = require('./canvas');
+var global = require('./global');
 
 var playerNameInput = document.getElementById('playerNameInput');
 var socket;
@@ -16,112 +17,26 @@ if (/Android|webOS|iPhone|iPad|iPod|BlackBerry/i.test(navigator.userAgent)) {
     global.mobile = true;
 }
 
-const initPlayer = (name) => {
-    const x = Math.round(Math.random() * window.config.gameWidth);
-    const y = Math.round(Math.random() * window.config.gameHeight);
-    const hue = Math.round(Math.random() * 360);
-    const mass = window.config.defaultPlayerMass;
-    const radius = window.util.massToRadius(mass);
-    
-    window.player = {
-        id: window.pulgram.getUserId(),
-        x: x,
-        y: y,
-        hue: hue,
-        name: name,
-        mass: mass,
-        cells: [{
-            x: x,
-            y: y,
-            mass: mass,
-            radius: radius,
-            hue: hue,
-            name: name
-        }],
-        target: { x: global.screen.width / 2, y: global.screen.height / 2 }
-    };
-
-    console.log('Player initialized:', window.player);
-    return window.player;
-};
-
 function startGame(type) {
     global.playerName = playerNameInput.value.replace(/(<([^>]+)>)/ig, '').substring(0, 25);
     global.playerType = type;
 
-    // Set up screen dimensions
-    global.screen = {
-        width: window.innerWidth,
-        height: window.innerHeight
-    };
+    global.screen.width = window.innerWidth;
+    global.screen.height = window.innerHeight;
 
     document.getElementById('startMenuWrapper').style.maxHeight = '0px';
     document.getElementById('gameAreaWrapper').style.opacity = 1;
-
-    if (window.animLoopHandle) {
-        window.cancelAnimationFrame(window.animLoopHandle);
-        window.animLoopHandle = null;
+    if (!socket) {
+        socket = io({ query: "type=" + type });
+        setupSocket(socket);
     }
-
-    window.canvas = new Canvas();
-    c = window.canvas.cv;
-    graph = c.getContext('2d');
-
-    // Initialize the game loop
-    global.gameStart = true;
-    window.animLoopHandle = window.requestAnimationFrame(gameLoop);
-
-    // Initialize player data
-    const spawnPoint = {
-        x: Math.random() * window.config.gameWidth,
-        y: Math.random() * window.config.gameHeight
-    };
-
-    window.player = {
-        id: window.pulgram.getUserId(),
-        x: spawnPoint.x,
-        y: spawnPoint.y,
-        screenWidth: global.screen.width,
-        screenHeight: global.screen.height,
-        target: { x: spawnPoint.x, y: spawnPoint.y },
-        name: global.playerName,
-        type: type,
-        hue: Math.random() * 360,
-        cells: [{
-            x: spawnPoint.x,
-            y: spawnPoint.y,
-            mass: window.config.defaultPlayerMass,
-            radius: window.util.massToRadius(window.config.defaultPlayerMass)
-        }]
-    };
-    global.player = window.player;
-
-    if (!global.networkCoordinator) {
-        global.networkCoordinator = new NetworkCoordinator();
-    }
-
-    // Initialize game state
-    window.chat.registerFunctions();
-    setupGameNetwork();
-
-    // Start host election
-    global.networkCoordinator.broadcastMessage('PLAYER_JOIN', {
-        userId: window.pulgram.getUserId(),
-        playerData: {
-            name: global.playerName,
-            type: type,
-            screenWidth: global.screen.width,
-            screenHeight: global.screen.height
-        }
-    });
-
-    global.networkCoordinator.startHostElection();
-
-    if (!global.animLoopHandle) {
+    if (!global.animLoopHandle)
         animloop();
-    }
-    
-    global.gameStart = true;
+    socket.emit('respawn');
+    window.chat.socket = socket;
+    window.chat.registerFunctions();
+    window.canvas.socket = socket;
+    global.socket = socket;
 }
 
 // Checks if the nick chosen contains valid alphanumeric characters (and underscores).
@@ -208,37 +123,6 @@ global.target = target;
 window.canvas = new Canvas();
 window.chat = new ChatClient();
 
-// Initialize canvas and input handling
-var c = window.canvas.cv;
-var graph = c.getContext('2d');
-
-// Add throttling for movement messages
-let lastBroadcastTime = 0;
-const BROADCAST_INTERVAL = 100; // Limit to 10 messages per second
-
-// Handle mouse movement on canvas
-c.addEventListener('mousemove', function(evt) {
-    const rect = c.getBoundingClientRect();
-    const x = evt.clientX - rect.left;
-    const y = evt.clientY - rect.top;
-    
-    // Update local target immediately for smooth animation
-    window.target.x = x;
-    window.target.y = y;
-    window.canvas.target = { x, y };
-
-    // Throttle broadcast messages
-    const now = Date.now();
-    if (global.networkCoordinator && now - lastBroadcastTime >= BROADCAST_INTERVAL) {
-        global.networkCoordinator.broadcastMessage('PLAYER_ACTION', {
-            userId: window.pulgram.getUserId(),
-            action: 'move',
-            params: { x, y }
-        });
-        lastBroadcastTime = now;
-    }
-});
-
 var visibleBorderSetting = document.getElementById('visBord');
 visibleBorderSetting.onchange = settings.toggleBorder;
 
@@ -251,113 +135,156 @@ continuitySetting.onchange = settings.toggleContinuity;
 var roundFoodSetting = document.getElementById('roundFood');
 roundFoodSetting.onchange = settings.toggleRoundFood;
 
+var c = window.canvas.cv;
+var graph = c.getContext('2d');
+
 $("#feed").click(function () {
-    if (global.networkCoordinator) {
-        global.networkCoordinator.broadcastMessage('PLAYER_ACTION', {
-            userId: window.pulgram.getUserId(),
-            action: 'eject',
-            params: {}
-        });
-    }
+    socket.emit('1');
     window.canvas.reenviar = false;
 });
 
 $("#split").click(function () {
-    if (global.networkCoordinator) {
-        global.networkCoordinator.broadcastMessage('PLAYER_ACTION', {
-            userId: window.pulgram.getUserId(),
-            action: 'split',
-            params: {}
-        });
-    }
+    socket.emit('2');
     window.canvas.reenviar = false;
 });
 
 function handleDisconnect() {
-    if (!global.kicked) {
-        render.drawErrorMessage('Disconnected from host!', graph, global.screen);
-        // Try to re-elect a new host
-        if (global.networkCoordinator) {
-            global.networkCoordinator.startHostElection();
-        }
+    socket.close();
+    if (!global.kicked) { // We have a more specific error message 
+        render.drawErrorMessage('Disconnected!', graph, global.screen);
     }
 }
 
-// Replace socket stuff with P2P networking
-function setupGameNetwork() {
-    if (!global.networkCoordinator) return;
+// socket stuff.
+function setupSocket(socket) {
+    // Handle ping.
+    socket.on('pongcheck', function () {
+        var latency = Date.now() - global.startPingTime;
+        debug('Latency: ' + latency + 'ms');
+        window.chat.addSystemLine('Ping: ' + latency + 'ms');
+    });
 
-    // Update game state when received from host
-    const coordinator = global.networkCoordinator;
-      coordinator.onGameStateUpdate = (state) => {
-        if (coordinator.isHost) return; // Host maintains own state
-        
-        console.log('Received game state update:', state);
-        
-        // Update game state from host
-        if (state.playerData) {
-            window.player = state.playerData;
-            if (!window.player.cells) {
-                window.player.cells = [{
-                    x: window.player.x,
-                    y: window.player.y,
-                    mass: window.config.defaultPlayerMass,
-                    radius: window.util.massToRadius(window.config.defaultPlayerMass),
-                    hue: window.player.hue,
-                    name: window.player.name
-                }];
+    // Handle error.
+    socket.on('connect_error', handleDisconnect);
+    socket.on('disconnect', handleDisconnect);
+
+    // Handle connection.
+    socket.on('welcome', function (playerSettings, gameSizes) {
+        player = playerSettings;
+        player.name = global.playerName;
+        player.screenWidth = global.screen.width;
+        player.screenHeight = global.screen.height;
+        player.target = window.canvas.target;
+        global.player = player;
+        window.chat.player = player;
+        socket.emit('gotit', player);
+        global.gameStart = true;
+        window.chat.addSystemLine('Connected to the game!');
+        window.chat.addSystemLine('Type <b>-help</b> for a list of commands.');
+        if (global.mobile) {
+            document.getElementById('gameAreaWrapper').removeChild(document.getElementById('chatbox'));
+        }
+        c.focus();
+        global.game.width = gameSizes.width;
+        global.game.height = gameSizes.height;
+        resize();
+    });
+
+    socket.on('playerDied', (data) => {
+        const player = isUnnamedCell(data.playerEatenName) ? 'An unnamed cell' : data.playerEatenName;
+        //const killer = isUnnamedCell(data.playerWhoAtePlayerName) ? 'An unnamed cell' : data.playerWhoAtePlayerName;
+
+        //window.chat.addSystemLine('{GAME} - <b>' + (player) + '</b> was eaten by <b>' + (killer) + '</b>');
+        window.chat.addSystemLine('{GAME} - <b>' + (player) + '</b> was eaten');
+    });
+
+    socket.on('playerDisconnect', (data) => {
+        window.chat.addSystemLine('{GAME} - <b>' + (isUnnamedCell(data.name) ? 'An unnamed cell' : data.name) + '</b> disconnected.');
+    });
+
+    socket.on('playerJoin', (data) => {
+        window.chat.addSystemLine('{GAME} - <b>' + (isUnnamedCell(data.name) ? 'An unnamed cell' : data.name) + '</b> joined.');
+    });
+
+    socket.on('leaderboard', (data) => {
+        leaderboard = data.leaderboard;
+        var status = '<span class="title">Leaderboard</span>';
+        for (var i = 0; i < leaderboard.length; i++) {
+            status += '<br />';
+            if (leaderboard[i].id == player.id) {
+                if (leaderboard[i].name.length !== 0)
+                    status += '<span class="me">' + (i + 1) + '. ' + leaderboard[i].name + "</span>";
+                else
+                    status += '<span class="me">' + (i + 1) + ". An unnamed cell</span>";
+            } else {
+                if (leaderboard[i].name.length !== 0)
+                    status += (i + 1) + '. ' + leaderboard[i].name;
+                else
+                    status += (i + 1) + '. An unnamed cell';
             }
         }
-        window.foods = Array.isArray(state.foods) ? state.foods : [];
-        window.viruses = Array.isArray(state.viruses) ? state.viruses : [];
-        window.users = Array.isArray(state.users) ? state.users : [];
-        window.fireFood = Array.isArray(state.massList) ? state.massList : [];
-        window.leaderboard = Array.isArray(state.leaderboard) ? state.leaderboard : [];
+        //status += '<br />Players: ' + data.players;
+        document.getElementById('status').innerHTML = status;
+    });
 
-        // Update global game size
-        if (state.gameSize) {
-            global.gameWidth = state.gameSize.width;
-            global.gameHeight = state.gameSize.height;
+    socket.on('serverMSG', function (data) {
+        window.chat.addSystemLine(data);
+    });
+
+    // Chat.
+    socket.on('serverSendPlayerChat', function (data) {
+        window.chat.addChatLine(data.sender, data.message, false);
+    });
+
+    // Handle movement.
+    socket.on('serverTellPlayerMove', function (playerData, userData, foodsList, massList, virusList) {
+        if (global.playerType == 'player') {
+            player.x = playerData.x;
+            player.y = playerData.y;
+            player.hue = playerData.hue;
+            player.massTotal = playerData.massTotal;
+            player.cells = playerData.cells;
         }
-        
-        global.gameStart = true;
-    };
+        users = userData;
+        foods = foodsList;
+        viruses = virusList;
+        fireFood = massList;
+    });
 
-    coordinator.onPlayerDeath = (data) => {
+    // Death.
+    socket.on('RIP', function () {
         global.gameStart = false;
         render.drawErrorMessage('You died!', graph, global.screen);
-        // Rest of death handling...
-    };
+        window.setTimeout(() => {
+            document.getElementById('gameAreaWrapper').style.opacity = 0;
+            document.getElementById('startMenuWrapper').style.maxHeight = '1000px';
+            if (global.animLoopHandle) {
+                window.cancelAnimationFrame(global.animLoopHandle);
+                global.animLoopHandle = undefined;
+            }
+        }, 2500);
+    });
 
-    coordinator.onPlayerKick = (data) => {
+    socket.on('kick', function (reason) {
         global.gameStart = false;
         global.kicked = true;
-        if (data.reason !== '') {
-            render.drawErrorMessage('You were kicked for: ' + data.reason, graph, global.screen);
-        } else {
+        if (reason !== '') {
+            render.drawErrorMessage('You were kicked for: ' + reason, graph, global.screen);
+        }
+        else {
             render.drawErrorMessage('You were kicked!', graph, global.screen);
         }
-    };
+        socket.close();
+    });
 }
 
 const isUnnamedCell = (name) => name.length < 1;
 
-// Convert game coordinates to screen coordinates
-function getPosition(obj, player, screen) {
-    if (!obj || !player || !screen) return { x: 0, y: 0 };
-    
-    // Calculate camera offset based on player position
-    let dx = obj.x - player.x;
-    let dy = obj.y - player.y;
-    
-    // Transform to screen space
-    let x = screen.width / 2 + dx;
-    let y = screen.height / 2 + dy;
-    
+const getPosition = (entity, player, screen) => {
     return {
-        x: Math.round(x),
-        y: Math.round(y)
-    };
+        x: entity.x - player.x + screen.width / 2,
+        y: entity.y - player.y + screen.height / 2
+    }
 }
 
 window.requestAnimFrame = (function () {
@@ -376,113 +303,69 @@ window.cancelAnimFrame = (function (handle) {
 })();
 
 function animloop() {
-    if (window.animLoopHandle) {
-        window.cancelAnimationFrame(window.animLoopHandle);
-    }
-    window.animLoopHandle = window.requestAnimFrame(gameLoop);
+    global.animLoopHandle = window.requestAnimFrame(animloop);
+    gameLoop();
 }
 
 function gameLoop() {
-    if (!global.gameStart) return;
+    if (global.gameStart) {
+        graph.fillStyle = global.backgroundColor;
+        graph.fillRect(0, 0, global.screen.width, global.screen.height);
 
-    // Clear the canvas
-    graph.fillStyle = global.backgroundColor || '#F2FBFF';
-    graph.fillRect(0, 0, global.screen.width, global.screen.height);
+        render.drawGrid(global, player, global.screen, graph);
+        foods.forEach(food => {
+            let position = getPosition(food, player, global.screen);
+            render.drawFood(position, food, graph);
+        });
+        fireFood.forEach(fireFood => {
+            let position = getPosition(fireFood, player, global.screen);
+            render.drawFireFood(position, fireFood, playerConfig, graph);
+        });
+        viruses.forEach(virus => {
+            let position = getPosition(virus, player, global.screen);
+            render.drawVirus(position, virus, graph);
+        });
 
-    try {
-        // Update game size from config if not set
-        if (!global.gameWidth) global.gameWidth = window.config.gameWidth;
-        if (!global.gameHeight) global.gameHeight = window.config.gameHeight;
 
-        const borders = {
-            top: 0,
-            left: 0,
-            right: global.gameWidth,
-            bottom: global.gameHeight
-        };
-
-        // Draw the grid first
-        if (global.player) {
-            render.drawGrid(global, global.player, global.screen, graph);
+        let borders = { // Position of the borders on the screen
+            left: global.screen.width / 2 - player.x,
+            right: global.screen.width / 2 + global.game.width - player.x,
+            top: global.screen.height / 2 - player.y,
+            bottom: global.screen.height / 2 + global.game.height - player.y
         }
-
-        // Draw border if enabled
-        if (window.showBorders) {
+        if (global.borderDraw) {
             render.drawBorder(borders, graph);
         }
 
-        // Draw foods
-        if (Array.isArray(window.foods)) {
-            window.foods.forEach(food => {
-                if (!food) return;
-                const position = getPosition(food, global.player, global.screen);
-                render.drawFood(position, food, graph);
-            });
-        }
-
-        // Draw viruses
-        if (Array.isArray(window.viruses)) {
-            window.viruses.forEach(virus => {
-                if (!virus) return;
-                const position = getPosition(virus, global.player, global.screen);
-                render.drawVirus(position, virus, graph);
-            });
-        }
-
-        // Draw fire food
-        if (Array.isArray(window.fireFood)) {
-            window.fireFood.forEach(massFood => {
-                if (!massFood) return;
-                const position = getPosition(massFood, global.player, global.screen);
-                render.drawFireFood(position, massFood, playerConfig, graph);
-            });
-        }
-
-        // Draw current player
-        if (global.player && global.player.cells) {
-            const playerCells = global.player.cells.map(cell => {
-                const position = getPosition(cell, global.player, global.screen);
-                return {
-                    ...cell,
-                    x: position.x,
-                    y: position.y,
-                    hue: global.player.hue,
-                    name: global.player.name
-                };
-            });
-            render.drawCells(playerCells, playerConfig, window.toggleMassState, borders, graph);
-        }
-
-        // Draw other players
-        if (Array.isArray(window.users)) {
-            window.users.forEach(user => {
-                if (!user || !user.cells) return;
-                const userCells = user.cells.map(cell => {
-                    const position = getPosition(cell, global.player, global.screen);
-                    return {
-                        ...cell,
-                        x: position.x,
-                        y: position.y,
-                        hue: user.hue,
-                        name: user.name
-                    };
+        var cellsToDraw = [];
+        for (var i = 0; i < users.length; i++) {
+            let color = 'hsl(' + users[i].hue + ', 100%, 50%)';
+            let borderColor = 'hsl(' + users[i].hue + ', 100%, 45%)';
+            for (var j = 0; j < users[i].cells.length; j++) {
+                cellsToDraw.push({
+                    color: color,
+                    borderColor: borderColor,
+                    mass: users[i].cells[j].mass,
+                    name: users[i].name,
+                    radius: users[i].cells[j].radius,
+                    x: users[i].cells[j].x - player.x + global.screen.width / 2,
+                    y: users[i].cells[j].y - player.y + global.screen.height / 2
                 });
-                render.drawCells(userCells, playerConfig, window.toggleMassState, borders, graph);
-            });
+            }
         }
+        cellsToDraw.sort(function (obj1, obj2) {
+            return obj1.mass - obj2.mass;
+        });
+        render.drawCells(cellsToDraw, playerConfig, global.toggleMassState, borders, graph);
 
-    } catch (err) {
-        console.error('Error in game loop:', err);
+        socket.emit('0', window.canvas.target); // playerSendTarget "Heartbeat".
     }
-
-    // Continue animation
-    window.animLoopHandle = window.requestAnimFrame(gameLoop);
 }
 
 window.addEventListener('resize', resize);
 
 function resize() {
-    if (!global.networkCoordinator) return;
+    if (!socket) return;
 
     player.screenWidth = c.width = global.screen.width = global.playerType == 'player' ? window.innerWidth : global.game.width;
     player.screenHeight = c.height = global.screen.height = global.playerType == 'player' ? window.innerHeight : global.game.height;
@@ -492,89 +375,5 @@ function resize() {
         player.y = global.game.height / 2;
     }
 
-    if (global.networkCoordinator) {
-        global.networkCoordinator.broadcastMessage('PLAYER_ACTION', {
-            userId: window.pulgram.getUserId(),
-            action: 'resize',
-            params: { 
-                screenWidth: global.screen.width, 
-                screenHeight: global.screen.height 
-            }
-        });
-    }
-}
-
-// Mobile controls
-var isTouching = false;
-var touchStartPos = { x: 0, y: 0 };
-var touchCurrentPos = { x: 0, y: 0 };
-var mobileGamepad = document.getElementById('mobile');
-var maxJoystickDistance = 50; // Maximum distance the joystick can move
-
-function handleTouchStart(evt) {
-    isTouching = true;
-    const touch = evt.touches[0];
-    touchStartPos.x = touch.clientX;
-    touchStartPos.y = touch.clientY;
-    touchCurrentPos.x = touch.clientX;
-    touchCurrentPos.y = touch.clientY;
-}
-
-function handleTouchMove(evt) {
-    if (!isTouching) return;
-    evt.preventDefault();
-    
-    const touch = evt.touches[0];
-    touchCurrentPos.x = touch.clientX;
-    touchCurrentPos.y = touch.clientY;
-    
-    // Calculate joystick displacement
-    const dx = touchCurrentPos.x - touchStartPos.x;
-    const dy = touchCurrentPos.y - touchStartPos.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    
-    // Normalize to max joystick distance
-    const scale = distance > maxJoystickDistance ? maxJoystickDistance / distance : 1;
-    const scaledDx = dx * scale;
-    const scaledDy = dy * scale;
-    
-    // Update target based on joystick position
-    const centerX = global.screen.width / 2;
-    const centerY = global.screen.height / 2;
-    window.target.x = centerX + scaledDx * 10; // Scale movement for better control
-    window.target.y = centerY + scaledDy * 10;
-    window.canvas.target = { x: window.target.x, y: window.target.y };
-
-    // Update visual position of gamepad
-    const gamepad = document.getElementById('mobile');
-    if (gamepad) {
-        gamepad.style.transform = `translate(${scaledDx}px, ${scaledDy}px)`;
-    }
-
-    // Throttle broadcast messages
-    const now = Date.now();
-    if (global.networkCoordinator && now - lastBroadcastTime >= BROADCAST_INTERVAL) {
-        global.networkCoordinator.broadcastMessage('PLAYER_ACTION', {
-            userId: window.pulgram.getUserId(),
-            action: 'move',
-            params: { x: window.target.x, y: window.target.y }
-        });
-        lastBroadcastTime = now;
-    }
-}
-
-function handleTouchEnd(evt) {
-    isTouching = false;
-    // Reset gamepad position
-    const gamepad = document.getElementById('mobile');
-    if (gamepad) {
-        gamepad.style.transform = 'translate(0px, 0px)';
-    }
-}
-
-if (global.mobile) {
-    mobileGamepad.addEventListener('touchstart', handleTouchStart);
-    mobileGamepad.addEventListener('touchmove', handleTouchMove);
-    mobileGamepad.addEventListener('touchend', handleTouchEnd);
-    mobileGamepad.addEventListener('touchcancel', handleTouchEnd);
+    socket.emit('windowResized', { screenWidth: global.screen.width, screenHeight: global.screen.height });
 }
