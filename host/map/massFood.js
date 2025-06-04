@@ -1,10 +1,9 @@
-"use strict";
-
-const util = require('../lib/util');
-const gameLogic = require('../game-logic');
-const sat = require('sat')
-
-exports.MassFood = class {
+import util from '../lib/util.js'; 
+import gameLogic from '../game-logic.js';
+ 
+const SAT = window.SAT;
+const sat = SAT
+class MassFood {
 
     constructor(playerFiring, cellIndex, mass) {
         this.id = playerFiring.id;
@@ -40,13 +39,13 @@ exports.MassFood = class {
     }
 }
 
-exports.MassFoodManager = class {
+class MassFoodManager {
     constructor() {
         this.data = [];
     }
 
     addNew(playerFiring, cellIndex, mass)  {
-        this.data.push(new exports.MassFood(playerFiring, cellIndex, mass));
+        this.data.push(new MassFood(playerFiring, cellIndex, mass));
     }
 
     move (gameWidth, gameHeight) {
@@ -61,3 +60,7 @@ exports.MassFoodManager = class {
         }
     }
 }
+export default{
+    MassFood,
+    MassFoodManager
+};

@@ -152,7 +152,7 @@ const drawErrorMessage = (message, graph, screen) => {
     graph.fillText(message, screen.width / 2, screen.height / 2);
 }
 
-module.exports = {
+export default {
     drawFood,
     drawVirus,
     drawFireFood,

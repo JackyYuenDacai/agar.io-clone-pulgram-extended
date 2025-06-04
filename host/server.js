@@ -1,20 +1,13 @@
-/*jslint bitwise: true, node: true */
-'use strict';
+ 
+ const SAT = window.SAT ;
+import gameLogic from './game-logic.js';
+import config from '../config.js';
+import util from './lib/util.js'; 
+import PulgramSocket from '../js/pulgram-socket.js';
 
-const express = require('express');
-const app = express();
-const http = require('http').Server(app);
-const io = require('socket.io')(http);
-const SAT = require('sat');
-
-const gameLogic = require('./game-logic');
-const loggingRepositry = require('./repositories/logging-repository');
-const chatRepository = require('./repositories/chat-repository');
-const config = require('../../config');
-const util = require('./lib/util');
-const mapUtils = require('./map/map');
-const {getPosition} = require("./lib/entityUtils");
-
+import { getPosition } from './lib/entityUtils.js';
+ 
+import mapUtils from './map/map.js';
 let map = new mapUtils.Map(config);
 
 let sockets = {};
@@ -26,52 +19,77 @@ let leaderboardChanged = false;
 
 const Vector = SAT.Vector;
 
-app.use(express.static(__dirname + '/../client'));
 
-io.on('connection', function (socket) {
-    let type = socket.handshake.query.type;
-    console.log('User has connected: ', type);
-    switch (type) {
-        case 'player':
-            addPlayer(socket);
-            break;
-        case 'spectator':
-            addSpectator(socket);
-            break;
-        default:
-            console.log('Unknown user type, not doing anything.');
-    }
-});
+let gameIntervals = {
+  tickGame: null,
+  gameloop: null,
+  sendUpdates: null
+};
 
+function startHostLogic(socket){
+    console.log('Starting host logic...');
+    socket.on('connection', (data) => {
+        console.log('User has connected: ', data.type);
+        switch (data.type) {
+            case 'player':
+                console.log('Adding player with ID: ', data.playerId);
+                addPlayer(socket,data.playerId);
+                break;
+            case 'spectator':
+                addSpectator(socket);
+                break;
+            default:
+                console.log('Unknown user type, not doing anything.');
+        }
+    });
+    // Start all intervals and store their IDs
+
+    gameIntervals.gameloop = setInterval(gameloop, 1000);
+    gameIntervals.tickGame = setInterval(() => tickGame(socket), 1000 / 120);
+    gameIntervals.sendUpdates = setInterval(() => sendUpdates(socket), 1000 / config.networkUpdateFactor);
+}
+function stopHostLogic(socket) {
+  socket.off('connection');
+  
+  // Clear all intervals
+  clearInterval(gameIntervals.tickGame);
+  clearInterval(gameIntervals.gameloop);
+  clearInterval(gameIntervals.sendUpdates);
+  
+  // Reset interval IDs
+  gameIntervals.tickGame = null;
+  gameIntervals.gameloop = null;
+  gameIntervals.sendUpdates = null;
+}
 function generateSpawnpoint() {
     let radius = util.massToRadius(config.defaultPlayerMass);
     return getPosition(config.newPlayerInitialPosition === 'farthest', radius, map.players.data)
 }
 
 
-const addPlayer = (socket) => {
-    var currentPlayer = new mapUtils.playerUtils.Player(socket.id);
+const addPlayer = (socket,playerId) => {
+    var currentPlayer = new mapUtils.playerUtils.Player(playerId);
 
     socket.on('gotit', function (clientPlayerData) {
         console.log('[INFO] Player ' + clientPlayerData.name + ' connecting!');
         currentPlayer.init(generateSpawnpoint(), config.defaultPlayerMass);
 
-        if (map.players.findIndexByID(socket.id) > -1) {
+        if (map.players.findIndexByID(playerId) > -1) {
             console.log('[INFO] Player ID is already connected, kicking.');
-            socket.disconnect();
+            //socket.disconnect();
         } else if (!util.validNick(clientPlayerData.name)) {
             socket.emit('kick', 'Invalid username.');
-            socket.disconnect();
+            //socket.disconnect();
         } else {
             console.log('[INFO] Player ' + clientPlayerData.name + ' connected!');
-            sockets[socket.id] = socket;
+   
 
             const sanitizedName = clientPlayerData.name.replace(/(<([^>]+)>)/ig, '');
             clientPlayerData.name = sanitizedName;
 
             currentPlayer.clientProvidedData(clientPlayerData);
             map.players.pushNew(currentPlayer);
-            io.emit('playerJoin', { name: currentPlayer.name });
+            
             console.log('Total players: ' + map.players.data.length);
         }
 
@@ -88,7 +106,8 @@ const addPlayer = (socket) => {
 
     socket.on('respawn', () => {
         map.players.removePlayerByID(currentPlayer.id);
-        socket.emit('welcome', currentPlayer, {
+        socket.emit('welcome', {
+            player: currentPlayer,
             width: config.gameWidth,
             height: config.gameHeight
         });
@@ -98,81 +117,9 @@ const addPlayer = (socket) => {
     socket.on('disconnect', () => {
         map.players.removePlayerByID(currentPlayer.id);
         console.log('[INFO] User ' + currentPlayer.name + ' has disconnected');
-        socket.broadcast.emit('playerDisconnect', { name: currentPlayer.name });
+        socket.broadcast('playerDisconnect', { name: currentPlayer.name });
     });
 
-    socket.on('playerChat', (data) => {
-        var _sender = data.sender.replace(/(<([^>]+)>)/ig, '');
-        var _message = data.message.replace(/(<([^>]+)>)/ig, '');
-
-        if (config.logChat === 1) {
-            console.log('[CHAT] [' + (new Date()).getHours() + ':' + (new Date()).getMinutes() + '] ' + _sender + ': ' + _message);
-        }
-
-        socket.broadcast.emit('serverSendPlayerChat', {
-            sender: currentPlayer.name,
-            message: _message.substring(0, 35)
-        });
-
-        chatRepository.logChatMessage(_sender, _message, currentPlayer.ipAddress)
-            .catch((err) => console.error("Error when attempting to log chat message", err));
-    });
-
-    socket.on('pass', async (data) => {
-        const password = data[0];
-        if (password === config.adminPass) {
-            console.log('[ADMIN] ' + currentPlayer.name + ' just logged in as an admin.');
-            socket.emit('serverMSG', 'Welcome back ' + currentPlayer.name);
-            socket.broadcast.emit('serverMSG', currentPlayer.name + ' just logged in as an admin.');
-            currentPlayer.admin = true;
-        } else {
-            console.log('[ADMIN] ' + currentPlayer.name + ' attempted to log in with the incorrect password: ' + password);
-
-            socket.emit('serverMSG', 'Password incorrect, attempt logged.');
-
-            loggingRepositry.logFailedLoginAttempt(currentPlayer.name, currentPlayer.ipAddress)
-                .catch((err) => console.error("Error when attempting to log failed login attempt", err));
-        }
-    });
-
-    socket.on('kick', (data) => {
-        if (!currentPlayer.admin) {
-            socket.emit('serverMSG', 'You are not permitted to use this command.');
-            return;
-        }
-
-        var reason = '';
-        var worked = false;
-        for (let playerIndex in map.players.data) {
-            let player = map.players.data[playerIndex];
-            if (player.name === data[0] && !player.admin && !worked) {
-                if (data.length > 1) {
-                    for (var f = 1; f < data.length; f++) {
-                        if (f === data.length) {
-                            reason = reason + data[f];
-                        }
-                        else {
-                            reason = reason + data[f] + ' ';
-                        }
-                    }
-                }
-                if (reason !== '') {
-                    console.log('[ADMIN] User ' + player.name + ' kicked successfully by ' + currentPlayer.name + ' for reason ' + reason);
-                }
-                else {
-                    console.log('[ADMIN] User ' + player.name + ' kicked successfully by ' + currentPlayer.name);
-                }
-                socket.emit('serverMSG', 'User ' + player.name + ' was kicked by ' + currentPlayer.name);
-                sockets[player.id].emit('kick', reason);
-                sockets[player.id].disconnect();
-                map.players.removePlayerByIndex(playerIndex);
-                worked = true;
-            }
-        }
-        if (!worked) {
-            socket.emit('serverMSG', 'Could not locate user or user is an admin.');
-        }
-    });
 
     // Heartbeat function, update everytime.
     socket.on('0', (target) => {
@@ -211,10 +158,10 @@ const addSpectator = (socket) => {
     });
 }
 
-const tickPlayer = (currentPlayer) => {
+const tickPlayer = (socket,currentPlayer) => {
     if (currentPlayer.lastHeartbeat < new Date().getTime() - config.maxHeartbeatInterval) {
-        sockets[currentPlayer.id].emit('kick', 'Last heartbeat received over ' + config.maxHeartbeatInterval + ' ago.');
-        sockets[currentPlayer.id].disconnect();
+        socket.emit('kick', 'Last heartbeat received over ' + config.maxHeartbeatInterval + ' ago.',currentPlayer.id);
+
     }
 
     currentPlayer.move(config.slowBase, config.gameWidth, config.gameHeight, INIT_MASS_LOG);
@@ -263,8 +210,8 @@ const tickPlayer = (currentPlayer) => {
     currentPlayer.virusSplit(cellsToSplit, config.limitSplit, config.defaultPlayerMass);
 };
 
-const tickGame = () => {
-    map.players.data.forEach(tickPlayer);
+const tickGame = (socket) => {
+    map.players.data.forEach(player => tickPlayer(socket, player));
     map.massFood.move(config.gameWidth, config.gameHeight);
 
     map.players.handleCollisions(function (gotEaten, eater) {
@@ -276,7 +223,7 @@ const tickGame = () => {
         if (playerDied) {
             let playerGotEaten = map.players.data[gotEaten.playerIndex];
             io.emit('playerDied', { name: playerGotEaten.name }); //TODO: on client it is `playerEatenName` instead of `name`
-            sockets[playerGotEaten.id].emit('RIP');
+            socket.emit('RIP',playerGotEaten.id);
             map.players.removePlayerByIndex(gotEaten.playerIndex);
         }
     });
@@ -309,12 +256,21 @@ const gameloop = () => {
     map.balanceMass(config.foodMass, config.gameMass, config.maxFood, config.maxVirus);
 };
 
-const sendUpdates = () => {
-    spectators.forEach(updateSpectator);
+const sendUpdates = (socket) => {
+    //spectators.forEach(updateSpectator);
+    console.log('[DEBUG] Sending updates to players and spectators...');
     map.enumerateWhatPlayersSee(function (playerData, visiblePlayers, visibleFood, visibleMass, visibleViruses) {
-        sockets[playerData.id].emit('serverTellPlayerMove', playerData, visiblePlayers, visibleFood, visibleMass, visibleViruses);
+        socket.emit('serverTellPlayerMove', 
+            {
+                pd:playerData, 
+                vp:visiblePlayers, 
+                vf:visibleFood, 
+                vm:visibleMass, 
+                vv:visibleViruses
+            }
+        );
         if (leaderboardChanged) {
-            sendLeaderboard(sockets[playerData.id]);
+            sendLeaderboard(socket);
         }
     });
 
@@ -327,27 +283,9 @@ const sendLeaderboard = (socket) => {
         leaderboard
     });
 }
-const updateSpectator = (socketID) => {
-    let playerData = {
-        x: config.gameWidth / 2,
-        y: config.gameHeight / 2,
-        cells: [],
-        massTotal: 0,
-        hue: 100,
-        id: socketID,
-        name: ''
-    };
-    sockets[socketID].emit('serverTellPlayerMove', playerData, map.players.data, map.food.data, map.massFood.data, map.viruses.data);
-    if (leaderboardChanged) {
-        sendLeaderboard(sockets[socketID]);
-    }
-}
+ 
 
-setInterval(tickGame, 1000 / 60);
-setInterval(gameloop, 1000);
-setInterval(sendUpdates, 1000 / config.networkUpdateFactor);
-
-// Don't touch, IP configurations.
-var ipaddress = process.env.OPENSHIFT_NODEJS_IP || process.env.IP || config.host;
-var serverport = process.env.OPENSHIFT_NODEJS_PORT || process.env.PORT || config.port;
-http.listen(serverport, ipaddress, () => console.log('[DEBUG] Listening on ' + ipaddress + ':' + serverport));
+export default{
+    startHostLogic,
+    stopHostLogic,
+};

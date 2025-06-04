@@ -1,4 +1,4 @@
-module.exports = {
+export default {
     // Keys and other mathematical constants
     KEY_ESC: 27,
     KEY_ENTER: 13,
@@ -9,8 +9,8 @@ module.exports = {
     KEY_UP: 38,
     KEY_RIGHT: 39,
     KEY_DOWN: 40,
-    borderDraw: false,
-    mobile: false,
+    borderDraw: true,
+    mobile: true,
     // Canvas
     screen: {
         width: window.innerWidth,

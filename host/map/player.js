@@ -1,9 +1,8 @@
-"use strict";
 
-const util = require('../lib/util');
-const sat = require('sat');
-const gameLogic = require('../game-logic');
-
+import util from '../lib/util.js'; 
+import gameLogic from '../game-logic.js';
+ 
+const sat = window.SAT
 const MIN_SPEED = 6.25;
 const SPLIT_CELL_SPEED = 20;
 const SPEED_DECREMENT = 0.5;
@@ -82,7 +81,7 @@ class Cell {
     }
 }
 
-exports.Player = class {
+class Player {
     constructor(id) {
         this.id = id;
         this.hue = Math.round(Math.random() * 360);
@@ -276,7 +275,7 @@ exports.Player = class {
         }
     }
 }
-exports.PlayerManager = class {
+ class PlayerManager  {
     constructor() {
         this.data = [];
     }
@@ -347,4 +346,9 @@ exports.PlayerManager = class {
         }
         return result;
     }
+}
+export default{
+    Cell,
+    Player,
+    PlayerManager
 }

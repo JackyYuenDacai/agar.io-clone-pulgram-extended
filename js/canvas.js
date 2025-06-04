@@ -1,4 +1,4 @@
-var global = require('./global');
+import global from './global.js';
 
 class Canvas {
     constructor(params) {
@@ -150,5 +150,5 @@ class Canvas {
         }
     }
 }
-
-module.exports = Canvas;
+export default Canvas;
+ 

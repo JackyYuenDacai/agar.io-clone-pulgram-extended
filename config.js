@@ -1,4 +1,4 @@
-module.exports = {
+export default {
     host: "0.0.0.0",
     port: 3000,
     logpath: "logger.php",
@@ -25,7 +25,7 @@ module.exports = {
     maxVirus: 50,
     slowBase: 4.5,
     logChat: 0,
-    networkUpdateFactor: 40,
+    networkUpdateFactor: 200,
     maxHeartbeatInterval: 5000,
     foodUniformDisposition: true,
     newPlayerInitialPosition: "farthest",

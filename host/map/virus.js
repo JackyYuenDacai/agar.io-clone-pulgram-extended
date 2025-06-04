@@ -1,8 +1,19 @@
-"use strict";
+ 
+import util from '../lib/util.js'; 
+import { getPosition } from '../lib/entityUtils.js';
 
-const util = require('../lib/util');
-const { v4: uuidv4 } = require('uuid');
-const {getPosition} = require("../lib/entityUtils");
+
+function uuidv4() {
+  if (window.crypto && window.crypto.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
 
 class Virus {
     constructor(position, radius, mass, config) {
@@ -17,7 +28,7 @@ class Virus {
     }
 }
 
-exports.VirusManager = class {
+class VirusManager {
     constructor(virusConfig) {
         this.data = [];
         this.virusConfig = virusConfig;
@@ -40,4 +51,8 @@ exports.VirusManager = class {
     delete(virusCollision) {
         this.data.splice(virusCollision, 1);
     }
+};
+export default{
+    Virus,
+    VirusManager
 };

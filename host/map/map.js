@@ -1,18 +1,18 @@
-"use strict";
+ 
+import { isVisibleEntity } from "../lib/entityUtils.js";
+import foodUtils from './food.js';
+import virusUtils from './virus.js';
+import massFoodUtils from './massFood.js';
+import playerUtils from './player.js';
 
-const {isVisibleEntity} = require("../lib/entityUtils");
+ 
 
-exports.foodUtils = require('./food');
-exports.virusUtils = require('./virus');
-exports.massFoodUtils = require('./massFood');
-exports.playerUtils = require('./player');
-
-exports.Map = class {
+class Map{
     constructor(config) {
-        this.food = new exports.foodUtils.FoodManager(config.foodMass, config.foodUniformDisposition);
-        this.viruses = new exports.virusUtils.VirusManager(config.virus);
-        this.massFood = new exports.massFoodUtils.MassFoodManager();
-        this.players = new exports.playerUtils.PlayerManager();
+        this.food = new foodUtils.FoodManager(config.foodMass, config.foodUniformDisposition);
+        this.viruses = new virusUtils.VirusManager(config.virus);
+        this.massFood = new massFoodUtils.MassFoodManager();
+        this.players = new playerUtils.PlayerManager();
     }
 
     balanceMass(foodMass, gameMass, maxFood, maxVirus) {
@@ -68,3 +68,10 @@ exports.Map = class {
         }
     }
 }
+export default {
+    Map,
+    foodUtils,
+    virusUtils,
+    massFoodUtils,
+    playerUtils
+};

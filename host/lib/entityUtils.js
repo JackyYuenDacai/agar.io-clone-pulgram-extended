@@ -1,4 +1,4 @@
-const util = require("./util");
+import util from './util.js';
 
 function getPosition(isUniform, radius, uniformPositions) {
     return isUniform ? util.uniformPosition(uniformPositions, radius) : util.randomPosition(radius);
@@ -10,8 +10,7 @@ function isVisibleEntity(entity, player, addThreshold = true) {
         entity.x, entity.y, entityHalfSize, entityHalfSize,
         player.x, player.y, player.screenWidth / 2, player.screenHeight / 2);
 }
-
-module.exports = {
+export {
     getPosition,
     isVisibleEntity
 }

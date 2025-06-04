@@ -1,9 +1,9 @@
-var io = require('socket.io-client');
-var render = require('./render');
-var ChatClient = require('./chat-client');
-var Canvas = require('./canvas');
-var global = require('./global');
 
+import Canvas from './canvas.js'; 
+import  render from './render.js';
+import PulgramSocket from './pulgram-socket.js';
+import  global from './global.js';
+import HostLogic from '../host/server.js';
 var playerNameInput = document.getElementById('playerNameInput');
 var socket;
 
@@ -27,14 +27,12 @@ function startGame(type) {
     document.getElementById('startMenuWrapper').style.maxHeight = '0px';
     document.getElementById('gameAreaWrapper').style.opacity = 1;
     if (!socket) {
-        socket = io({ query: "type=" + type });
-        setupSocket(socket);
+        socket = new PulgramSocket('AgarOpen');
+        setupSocket(socket,type);
     }
     if (!global.animLoopHandle)
         animloop();
     socket.emit('respawn');
-    window.chat.socket = socket;
-    window.chat.registerFunctions();
     window.canvas.socket = socket;
     global.socket = socket;
 }
@@ -121,7 +119,7 @@ var target = { x: player.x, y: player.y };
 global.target = target;
 
 window.canvas = new Canvas();
-window.chat = new ChatClient();
+ 
 
 var visibleBorderSetting = document.getElementById('visBord');
 visibleBorderSetting.onchange = settings.toggleBorder;
@@ -156,12 +154,16 @@ function handleDisconnect() {
 }
 
 // socket stuff.
-function setupSocket(socket) {
+function setupSocket(socket,type) {
     // Handle ping.
+    socket.emit('connection',{
+        type: type,
+        playerName: global.playerName,
+        playerId: pulgram.getUserId()
+    })
     socket.on('pongcheck', function () {
         var latency = Date.now() - global.startPingTime;
-        debug('Latency: ' + latency + 'ms');
-        window.chat.addSystemLine('Ping: ' + latency + 'ms');
+        console.log('Ping: ' + latency + 'ms');
     });
 
     // Handle error.
@@ -169,24 +171,23 @@ function setupSocket(socket) {
     socket.on('disconnect', handleDisconnect);
 
     // Handle connection.
-    socket.on('welcome', function (playerSettings, gameSizes) {
-        player = playerSettings;
+    socket.on('welcome', function (playerSettings) {
+        player = playerSettings.player;
         player.name = global.playerName;
         player.screenWidth = global.screen.width;
         player.screenHeight = global.screen.height;
         player.target = window.canvas.target;
         global.player = player;
-        window.chat.player = player;
+
         socket.emit('gotit', player);
         global.gameStart = true;
-        window.chat.addSystemLine('Connected to the game!');
-        window.chat.addSystemLine('Type <b>-help</b> for a list of commands.');
+
         if (global.mobile) {
             document.getElementById('gameAreaWrapper').removeChild(document.getElementById('chatbox'));
         }
         c.focus();
-        global.game.width = gameSizes.width;
-        global.game.height = gameSizes.height;
+        global.game.width = playerSettings.width;
+        global.game.height = playerSettings.height;
         resize();
     });
 
@@ -226,18 +227,15 @@ function setupSocket(socket) {
         //status += '<br />Players: ' + data.players;
         document.getElementById('status').innerHTML = status;
     });
-
-    socket.on('serverMSG', function (data) {
-        window.chat.addSystemLine(data);
-    });
-
-    // Chat.
-    socket.on('serverSendPlayerChat', function (data) {
-        window.chat.addChatLine(data.sender, data.message, false);
-    });
-
     // Handle movement.
-    socket.on('serverTellPlayerMove', function (playerData, userData, foodsList, massList, virusList) {
+    socket.on('serverTellPlayerMove', function (data) {
+        var playerData = data.pd;
+        var userData = data.vp;
+        var foodsList = data.vf;
+        var massList = data.vm;
+        var virusList = data.vv;
+ 
+        global.gameStart = true;
         if (global.playerType == 'player') {
             player.x = playerData.x;
             player.y = playerData.y;
@@ -276,6 +274,19 @@ function setupSocket(socket) {
         }
         socket.close();
     });
+
+    socket.on('host_changed', function(data){
+        console.log(`Host changed to ${data.hostId}, isMe: ${data.isMe}`);
+        
+        if (data.isMe) {
+            // I'm the host: initialize game state
+            global.isHost = true; 
+            HostLogic.startHostLogic(socket)
+             
+        }else{
+            HostLogic.stopHostLogic(socket)
+        }
+    });
 }
 
 const isUnnamedCell = (name) => name.length < 1;
@@ -306,7 +317,7 @@ function animloop() {
     global.animLoopHandle = window.requestAnimFrame(animloop);
     gameLoop();
 }
-
+var lastHeartbeatTimestamp = Date.now();
 function gameLoop() {
     if (global.gameStart) {
         graph.fillStyle = global.backgroundColor;
@@ -357,8 +368,16 @@ function gameLoop() {
             return obj1.mass - obj2.mass;
         });
         render.drawCells(cellsToDraw, playerConfig, global.toggleMassState, borders, graph);
-
-        socket.emit('0', window.canvas.target); // playerSendTarget "Heartbeat".
+        console.log('Game state:', {
+            gameStart: global.gameStart,
+            foods: foods.length,
+            users: users.length,
+            viruses: viruses.length
+        });
+        if(lastHeartbeatTimestamp + 200 < Date.now()) {
+            socket.emit('0', window.canvas.target); // playerSendTarget "Heartbeat".
+            lastHeartbeatTimestamp = Date.now();
+        }
     }
 }
 
