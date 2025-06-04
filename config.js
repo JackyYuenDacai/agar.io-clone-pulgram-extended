@@ -25,7 +25,7 @@ export default {
     maxVirus: 50,
     slowBase: 4.5,
     logChat: 0,
-    networkUpdateFactor: 200,
+    networkUpdateFactor: 3,
     maxHeartbeatInterval: 5000,
     foodUniformDisposition: true,
     newPlayerInitialPosition: "farthest",

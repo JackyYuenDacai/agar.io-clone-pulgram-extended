@@ -6,8 +6,9 @@
  * 2. Clients can only send to and receive from the host
  * 3. Providing emit/on interface similar to sockets
  */
+const pulgram = window.pulgram
 class PulgramSocket {
-    constructor(namespace = 'default') {
+    constructor(namespace = 'default', initialHandlers = {}) {
         this.namespace = namespace;
         this.isHost = false;
         this.participants = new Map(); // userId -> timestamp
@@ -16,11 +17,15 @@ class PulgramSocket {
         this.hostElectionInterval = null;
         this.hostElectionTimeout = 5000; // 5 seconds
         this.lastPing = Date.now();
+        this.discoveryTimeout = null;
         this.messageQueue = []; // Queue for messages when no host is available
-        
+        // Register initial event handlers
+        for (const [event, handler] of Object.entries(initialHandlers)) {
+            this.on(event, handler);
+        }
         // Initialize
         this._setupMessageListener();
-        this._joinSession();
+    
     }
 
     /**
@@ -61,13 +66,10 @@ class PulgramSocket {
             timestamp: Date.now()
         };
 
-        const pulgramMessage = pulgram.createMessage(
-            JSON.stringify(message),
-        );
-        
+ 
         // Send via Pulgram
         
-        pulgram.sendMessage(pulgramMessage);
+        pulgram.sendMessage(JSON.stringify(message));
         // Process immediately on host for system events or when targeting self
         if (isSystemEvent || this.isHost) {
             console.log(`Processing system event immediately: ${event}`, data);
@@ -167,13 +169,13 @@ class PulgramSocket {
      * @private
      */
     _setupMessageListener() {
-        pulgram.setOnMessageReceivedListener((message) => {
-            if (message.type !== pulgram.MessageType.GAME_MOVE) return;
+        pulgram.setOnMessageReceivedListener(async  (message) => {
 
             try {
                 const socketMessage = JSON.parse(message.content);
                 if (socketMessage.type === 'socket' && 
                     socketMessage.namespace === this.namespace) {
+                    console.log(`Received socket message: ${socketMessage.event}`, socketMessage.data);
                     this._handleSocketMessage(socketMessage);
                 }
             } catch (e) {
@@ -187,16 +189,50 @@ class PulgramSocket {
      * @private
      */
     _joinSession() {
-        // Announce presence and participate in host election
-        this.emit('_join', { userId: pulgram.getUserId() });
+        const myId = pulgram.getUserId();
+        this.participants.set(myId, Date.now());
         
-        // Start host election if not already started
-        if (!this.hostElectionInterval) {
-            this.hostElectionInterval = setInterval(() => {
+        // First, announce our presence and request host information
+        this.emit('_join', { userId: myId });
+        this.emit('_request_host', { userId: myId });
+        
+        // IMPORTANT CHANGE: Wait for existing host responses before running election
+        this.discoveryTimeout = setTimeout(() => { // Store in the class property
+            // Only start the host election process if we haven't found a host yet
+            if (!this.hostId) {
+                console.log("No host response received, starting election process");
                 this._checkHostStatus();
-            }, 3000);
-        }
-    }    /**
+                
+                // Set up recurring host checks
+                if (!this.hostElectionInterval) {
+                    this.hostElectionInterval = setInterval(() => {
+                        this._checkHostStatus();
+                    }, 3000);
+                }
+            }
+        }, 2000); // Increase to 2 seconds for more reliable host discovery
+    
+        
+        // Fire a connected event once we have a host (either we became host or found one)
+        const checkConnection = setInterval(() => {
+            if (this.hostId) {
+                clearInterval(checkConnection);
+                this._triggerEvent('connected', {
+                    hostId: this.hostId,
+                    isHost: this.isHost
+                });
+            } else {
+                // If still no host after a while, try requesting again
+                this.emit('_request_host', { userId: myId });
+            }
+        }, 500); // Check frequently until connected
+    }
+    connect() {
+        this._joinSession();
+ 
+    }
+    
+    /**
      * Check host status and initiate election if needed
      * @private
      */
@@ -312,10 +348,7 @@ class PulgramSocket {
                     previousHostId: this.hostId !== message.data.hostId ? this.hostId : null
                 });
                 
-                // Process any queued messages now that we have a host
-                if (!this.isHost) {
-                    this._processMessageQueue();
-                }
+ 
                 
                 return;
             } else if (message.event === '_ping') {
@@ -328,7 +361,51 @@ class PulgramSocket {
                 this.participants.delete(message.from);
                 this._triggerEvent('user_left', { userId: message.from });
                 return;
+            } else if (message.event === '_request_host') {
+                // If I'm the host, respond to host requests
+                if (this.isHost) {
+                    console.log(`Responding to host request from ${message.from}`);
+                    this.emit('_host_info', { 
+                        hostId: this.hostId,
+                        participants: Array.from(this.participants.keys())
+                    }); // Direct reply to the requester
+                }
+                return;
             }
+                else if (message.event === '_host_info') {
+                    // Update host info when received
+                    this.hostId = message.data.hostId;
+                    this.isHost = (pulgram.getUserId() === this.hostId);
+                    
+                    console.log('Received host info:', message.data);
+                    
+                    // Clear the discovery timeout to prevent automatic host election
+                    if (this.discoveryTimeout) {
+                        console.log('Clearing discovery timeout, host info received');
+                        clearTimeout(this.discoveryTimeout);
+                        this.discoveryTimeout = null;
+                    }
+                    // Update participants from host's list
+                    for (const userId of message.data.participants) {
+                        if (!this.participants.has(userId)) {
+                            this.participants.set(userId, Date.now());
+                        }
+                    }
+                    
+                    // Process any queued messages now that we have a host
+                    if (!this.isHost) {
+                        this._processMessageQueue();
+                    }
+                    
+                    // Trigger host_changed event for non-hosts too
+                    this._triggerEvent('host_changed', { 
+                        hostId: this.hostId,
+                        isMe: this.isHost,
+                        previousHostId: null
+                    });
+                    
+                    return;
+                }
         } else {
             // For regular messages, apply communication constraints:
             

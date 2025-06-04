@@ -316,7 +316,7 @@ class Player {
     handleCollisions(callback) {
         for (let playerAIndex = 0; playerAIndex < this.data.length; playerAIndex++) {
             for (let playerBIndex = playerAIndex + 1; playerBIndex < this.data.length; playerBIndex++) {
-                exports.Player.checkForCollisions(
+                Player.checkForCollisions(
                     this.data[playerAIndex],
                     this.data[playerBIndex],
                     playerAIndex,

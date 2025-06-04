@@ -32,7 +32,9 @@ function startGame(type) {
     }
     if (!global.animLoopHandle)
         animloop();
-    socket.emit('respawn');
+    socket.emit('respawn',{
+        playerId: pulgram.getUserId(),
+    });
     window.canvas.socket = socket;
     global.socket = socket;
 }
@@ -137,17 +139,21 @@ var c = window.canvas.cv;
 var graph = c.getContext('2d');
 
 $("#feed").click(function () {
-    socket.emit('1');
+    socket.emit('1',{
+        playerId:player.id
+    });
     window.canvas.reenviar = false;
 });
 
 $("#split").click(function () {
-    socket.emit('2');
+        socket.emit('2',{
+        playerId:player.id
+    });
     window.canvas.reenviar = false;
 });
 
 function handleDisconnect() {
-    socket.close();
+    //socket.close();
     if (!global.kicked) { // We have a more specific error message 
         render.drawErrorMessage('Disconnected!', graph, global.screen);
     }
@@ -156,6 +162,18 @@ function handleDisconnect() {
 // socket stuff.
 function setupSocket(socket,type) {
     // Handle ping.
+    socket.on('host_changed', function(data){
+        console.log(`Host changed to ${data.hostId}, isMe: ${data.isMe}`);
+        
+        if (data.isMe) {
+            // I'm the host: initialize game state
+            global.isHost = true; 
+            HostLogic.startHostLogic(socket)
+             
+        }else{
+            HostLogic.stopHostLogic(socket)
+        }
+    });
     socket.emit('connection',{
         type: type,
         playerName: global.playerName,
@@ -172,7 +190,11 @@ function setupSocket(socket,type) {
 
     // Handle connection.
     socket.on('welcome', function (playerSettings) {
+        if(playerSettings.to != pulgram.getUserId()) {
+            return; // Not for this player.
+        }
         player = playerSettings.player;
+        player.id = pulgram.getUserId();
         player.name = global.playerName;
         player.screenWidth = global.screen.width;
         player.screenHeight = global.screen.height;
@@ -183,7 +205,7 @@ function setupSocket(socket,type) {
         global.gameStart = true;
 
         if (global.mobile) {
-            document.getElementById('gameAreaWrapper').removeChild(document.getElementById('chatbox'));
+            //document.getElementById('gameAreaWrapper').removeChild(document.getElementById('chatbox'));
         }
         c.focus();
         global.game.width = playerSettings.width;
@@ -229,12 +251,14 @@ function setupSocket(socket,type) {
     });
     // Handle movement.
     socket.on('serverTellPlayerMove', function (data) {
-        var playerData = data.pd;
-        var userData = data.vp;
-        var foodsList = data.vf;
-        var massList = data.vm;
-        var virusList = data.vv;
- 
+        var playerData = data.pd[player.id];
+        var userData = data.vp[player.id];
+        var foodsList = data.vf[player.id];
+        var massList = data.vm[player.id];
+        var virusList = data.vv[player.id];
+        if(playerData.id !== player.id) {
+            return;
+        }
         global.gameStart = true;
         if (global.playerType == 'player') {
             player.x = playerData.x;
@@ -250,7 +274,10 @@ function setupSocket(socket,type) {
     });
 
     // Death.
-    socket.on('RIP', function () {
+    socket.on('RIP', function (data) {
+        if (data.playerId != player.id) {
+            return; // Not for this player.
+        }
         global.gameStart = false;
         render.drawErrorMessage('You died!', graph, global.screen);
         window.setTimeout(() => {
@@ -263,7 +290,12 @@ function setupSocket(socket,type) {
         }, 2500);
     });
 
-    socket.on('kick', function (reason) {
+    socket.on('kick', function (data) {
+
+        if(data.playerId != player.id) {
+            return; // Not for this player.
+        }
+        var reason = data.reason || '';
         global.gameStart = false;
         global.kicked = true;
         if (reason !== '') {
@@ -272,21 +304,10 @@ function setupSocket(socket,type) {
         else {
             render.drawErrorMessage('You were kicked!', graph, global.screen);
         }
-        socket.close();
+        //socket.close();
     });
 
-    socket.on('host_changed', function(data){
-        console.log(`Host changed to ${data.hostId}, isMe: ${data.isMe}`);
-        
-        if (data.isMe) {
-            // I'm the host: initialize game state
-            global.isHost = true; 
-            HostLogic.startHostLogic(socket)
-             
-        }else{
-            HostLogic.stopHostLogic(socket)
-        }
-    });
+    socket.connect();
 }
 
 const isUnnamedCell = (name) => name.length < 1;
@@ -368,14 +389,11 @@ function gameLoop() {
             return obj1.mass - obj2.mass;
         });
         render.drawCells(cellsToDraw, playerConfig, global.toggleMassState, borders, graph);
-        console.log('Game state:', {
-            gameStart: global.gameStart,
-            foods: foods.length,
-            users: users.length,
-            viruses: viruses.length
-        });
-        if(lastHeartbeatTimestamp + 200 < Date.now()) {
-            socket.emit('0', window.canvas.target); // playerSendTarget "Heartbeat".
+ 
+        if(lastHeartbeatTimestamp + 500 < Date.now()) {
+            socket.emit('0', {
+                playerId: player.id,
+                target:window.canvas.target}); // playerSendTarget "Heartbeat".
             lastHeartbeatTimestamp = Date.now();
         }
     }
@@ -394,5 +412,8 @@ function resize() {
         player.y = global.game.height / 2;
     }
 
-    socket.emit('windowResized', { screenWidth: global.screen.width, screenHeight: global.screen.height });
+    socket.emit('windowResized', { 
+        playerId: player.id,
+       target: {screenWidth: global.screen.width, screenHeight: global.screen.height }
+    });
 }
