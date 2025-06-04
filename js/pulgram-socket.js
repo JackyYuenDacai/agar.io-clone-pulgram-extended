@@ -37,7 +37,7 @@ class PulgramSocket {
      * @param {any} data - Data to send
      * @param {string} targetId - Optional specific target (host use only)
      */
-    emit(event, data, targetId = null) {
+    async emit(event, data, targetId = null) {
         // System events are always allowed
         const isSystemEvent = event.startsWith('_');
         
@@ -88,7 +88,20 @@ class PulgramSocket {
             return;
         }
         
-        this.emit(event, data);
+        const message = {
+            type: 'socket',
+            namespace: this.namespace,
+            event: event,
+            data: data,
+            from: pulgram.getUserId(),
+            to: null,
+            timestamp: Date.now()
+        };
+
+ 
+        // Send via Pulgram
+        
+        pulgram.sendMessage(JSON.stringify(message));
     }
 
     /**

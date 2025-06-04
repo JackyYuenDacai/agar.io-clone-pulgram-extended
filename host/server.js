@@ -19,6 +19,67 @@ let leaderboardChanged = false;
 
 const Vector = SAT.Vector;
 
+let playerLists = {};
+// Add player to playerLists
+function addPlayerToList(playerId, playerData) {
+    if (!playerId) {
+        console.error('[ERROR] Attempted to add player with invalid ID');
+        return false;
+    }
+    
+    // Store player data with ID as key
+    playerLists[playerId] = playerData || {
+        id: playerId,
+        lastSeen: Date.now(),
+        connected: true
+    };
+    
+    console.log(`[INFO] Player ${playerId} added to player list`);
+    console.log(`[INFO] Total players in list: ${Object.keys(playerLists).length}`);
+    return true;
+}
+
+// Remove player from playerLists
+function removePlayerFromList(playerId) {
+    if (!playerId || !playerLists[playerId]) {
+        console.warn(`[WARN] Attempted to remove non-existent player: ${playerId}`);
+        return false;
+    }
+    
+    // Delete the player entry
+    delete playerLists[playerId];
+    
+    console.log(`[INFO] Player ${playerId} removed from player list`);
+    console.log(`[INFO] Total players in list: ${Object.keys(playerLists).length}`);
+    return true;
+}
+
+// Update player data in playerLists
+function updatePlayerInList(playerId, updates) {
+    if (!playerId || !playerLists[playerId]) {
+        console.warn(`[WARN] Attempted to update non-existent player: ${playerId}`);
+        return false;
+    }
+    
+    // Update with new data
+    playerLists[playerId] = {
+        ...playerLists[playerId],
+        ...updates,
+        lastUpdated: Date.now()
+    };
+    
+    return true;
+}
+
+// Get player from list
+function getPlayerFromList(playerId) {
+    return playerLists[playerId];
+}
+
+// Check if player is in list
+function isPlayerInList(playerId) {
+    return !!playerLists[playerId];
+}
 
 let gameIntervals = {
   tickGame: null,
@@ -33,6 +94,7 @@ function startHostLogic(socket){
         switch (data.type) {
             case 'player':
                 console.log('Adding player with ID: ', data.playerId);
+                addPlayerToList(data.playerId,new mapUtils.playerUtils.Player(data.playerId));
                 break;
             default:
                 console.log('Unknown user type, not doing anything.');
@@ -41,16 +103,16 @@ function startHostLogic(socket){
 
     socket.on('gotit', function (clientPlayerData) {
         // Make sure we have the player ID from the message
-        var currentPlayer = new mapUtils.playerUtils.Player(clientPlayerData.playerId);
-        const playerId = clientPlayerData.from || clientPlayerData.id || clientPlayerData.playerId;
+        var currentPlayer = getPlayerFromList(clientPlayerData.id);
+        const playerId =  clientPlayerData.id;
         console.log('[INFO] Player ' + clientPlayerData.name + ' connecting!');
         currentPlayer.init(generateSpawnpoint(), config.defaultPlayerMass);
 
         if (map.players.findIndexByID(playerId) > -1) {
             console.log('[INFO] Player ID is already connected, kicking.');
-            socket.emit('kick', { playerId: playerId, reason: 'Already connected' });
+            socket.broadcast('kick', { playerId: playerId, reason: 'Already connected' });
         } else if (!util.validNick(clientPlayerData.name)) {
-            socket.emit('kick', { playerId: playerId, reason: 'Invalid username' });
+            socket.broadcast('kick', { playerId: playerId, reason: 'Invalid username' });
         } else {
             console.log('[INFO] Player ' + clientPlayerData.name + ' connected!');
 
@@ -58,7 +120,7 @@ function startHostLogic(socket){
             clientPlayerData.name = sanitizedName;
 
             currentPlayer.clientProvidedData(clientPlayerData);
-            map.players.removePlayerByID(clientPlayerData.playerId);
+            updatePlayerInList(playerId, currentPlayer);
             map.players.pushNew(currentPlayer);
             
             console.log('Total players: ' + map.players.data.length);
@@ -69,44 +131,36 @@ function startHostLogic(socket){
     socket.on('respawn', (data) => {
         const playerId =  data.playerId;
         if (!playerId) return;
+      
+        const currentPlayer = getPlayerFromList(playerId);
         
         map.players.removePlayerByID(playerId);
-        
-        // Create a new player instance for the respawned player
-        const respawnedPlayer = new mapUtils.playerUtils.Player(playerId);
-        respawnedPlayer.init(generateSpawnpoint(), config.defaultPlayerMass);
-        
         // Send welcome message to the specific player
         socket.emit('welcome', {
-            player: respawnedPlayer,
+            player: currentPlayer,
             width: config.gameWidth,
             height: config.gameHeight,
             to: playerId // Target specific player
         });
         
-        // Add the player back to the game
-        map.players.pushNew(respawnedPlayer);
+ 
         console.log('[INFO] User with ID ' + playerId + ' has respawned');
     });
 
     socket.on('pingcheck', () => {
-        socket.emit('pongcheck');
+        socket.broadcast('pongcheck');
     });
 
     socket.on('windowResized', (data) => {
 
         const playerId =    data.playerId;
         const target =      data.target 
-        
-        // Find the player by ID
-        const playerIndex = map.players.findIndexByID(playerId);
-        if (playerIndex === -1) {
-            console.warn('[WARN] Player with ID ' + playerId + ' not found for heartbeat update.');
-            return; // Player not found
-        }
-        const currentPlayer = map.players.data[playerIndex];
+        var currentPlayer = getPlayerFromList(playerId);
+ 
+ 
         currentPlayer.screenWidth = target.screenWidth;
         currentPlayer.screenHeight = target.screenHeight;
+        updatePlayerInList(playerId, currentPlayer);
     });
  
 
@@ -188,22 +242,11 @@ const addPlayer = (socket,playerId) => {
 
 }
 
-const addSpectator = (socket) => {
-    socket.on('gotit', function () {
-        sockets[socket.id] = socket;
-        spectators.push(socket.id);
-        io.emit('playerJoin', { name: '' });
-    });
-
-    socket.emit("welcome", {}, {
-        width: config.gameWidth,
-        height: config.gameHeight
-    });
-}
+ 
 
 const tickPlayer = (socket,currentPlayer) => {
     if (currentPlayer.lastHeartbeat < new Date().getTime() - config.maxHeartbeatInterval) {
-        socket.emit('kick', { playerId : currentPlayer.id , reason : 'Last heartbeat received over ' + config.maxHeartbeatInterval + ' ago.'});
+        socket.broadcast('kick', { playerId : currentPlayer.id , reason : 'Last heartbeat received over ' + config.maxHeartbeatInterval + ' ago.'});
         map.players.removePlayerByID(currentPlayer.id);
     }
 
@@ -266,7 +309,7 @@ const tickGame = (socket) => {
         if (playerDied) {
             let playerGotEaten = map.players.data[gotEaten.playerIndex];
             //io.emit('playerDied', { name: playerGotEaten.name }); //TODO: on client it is `playerEatenName` instead of `name`
-            socket.emit('RIP',playerGotEaten.id);
+            socket.broadcast('RIP',playerGotEaten.id);
             map.players.removePlayerByIndex(gotEaten.playerIndex);
         }
     });

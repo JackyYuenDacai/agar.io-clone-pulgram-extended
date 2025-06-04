@@ -103,7 +103,7 @@ var playerConfig = {
 };
 
 var player = {
-    id: -1,
+    id: pulgram.getUserId(),
     x: global.screen.width / 2,
     y: global.screen.height / 2,
     screenWidth: global.screen.width,
@@ -194,7 +194,7 @@ function setupSocket(socket,type) {
             return; // Not for this player.
         }
         player = playerSettings.player;
-        player.id = pulgram.getUserId();
+        player.id = global.player.id;
         player.name = global.playerName;
         player.screenWidth = global.screen.width;
         player.screenHeight = global.screen.height;
