@@ -309,7 +309,7 @@ const tickGame = (socket) => {
         if (playerDied) {
             let playerGotEaten = map.players.data[gotEaten.playerIndex];
             //io.emit('playerDied', { name: playerGotEaten.name }); //TODO: on client it is `playerEatenName` instead of `name`
-            socket.broadcast('RIP',playerGotEaten.id);
+            socket.emit('RIP',playerGotEaten.id);
             map.players.removePlayerByIndex(gotEaten.playerIndex);
         }
     });
